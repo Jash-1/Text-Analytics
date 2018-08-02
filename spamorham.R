@@ -69,6 +69,8 @@ prop.table(table(test$Label))
 library(quanteda)
 help(package = "quanteda")
 
+#data pre - preocessing pipeline
+
 #Tokenize Text message
 train.tokens <- tokens(train$Text, what = "word", 
                        remove_numbers = TRUE, remove_punct = TRUE,
@@ -123,8 +125,8 @@ cl = makeCluster(3, type = "SOCK")
 registerDoSNOW(cl)
 
 #As the data is non-trivial in size  use a single decision tree alogrithm
-#rpart.cv.1 = train(Label ~ ., data = train.tokens.df, method = "rpart", trControl = cv.cntrl, tuneLength = 7)
 rpart.cv.1 = train(Label ~ ., data = train.tokens.df, method = "rpart", trControl = cv.cntrl, tuneLength = 7)
+
 # Processing is done
 stopCluster(cl)
 
@@ -134,3 +136,73 @@ total.time
 
 #Check Results
 rpart.cv.1
+
+#using Term Frequency(TF) and Inverse Document Frequency(IDF) to improve model prediction 
+#By checking how important is the term(if it repeats a lot it is not that important for prediction)
+
+#calculating relative Term Frequency (row/document centric) (normalizes)
+term.frequency = function(row)  
+  { row / sum(row) }    #every cell in row and divide by total of row which gives percentage of each terms in a doc
+
+#calculating Inverse Document Frequency (column/corpus centric) (penalizes)
+inverse.doc.freq = function(col)
+{ corpus.size = length(col)         # calculate for each number of columns how many documents are there
+doc.count = length(which(col > 0))  #to get number of rows where column is not 0 
+log10(corpus.size / doc.count)     #IDF of(term) = no ofdocuments in column divided by count of term in which it shows.  
+}
+
+#cauculating TF-IDF
+tf.idf = function(tf, idf) { tf * idf }
+
+#normalize using TF (transpose - changeing rows to columns)
+train.tokens.df = apply(train.tokens.matrix, 1, term.frequency)
+dim(train.tokens.df)
+dim(train.tokens.matrix)
+View(train.tokens.df[1:20, 1:100])
+
+#calculate IDF vector fortraining and test data
+train.tokens.idf = apply(train.tokens.matrix, 2, inverse.doc.freq)
+str(train.tokens.idf)
+
+#calculating TF-IDF
+train.tokens.tfidf = apply(train.tokens.df, 2, tf.idf, idf = train.tokens.idf)
+dim(train.tokens.tfidf)
+View(train.tokens.tfidf[1:25, 1:25])
+
+#transpose matrix back to original form
+train.tokens.tfidf = t(train.tokens.tfidf)
+dim(train.tokens.tfidf)
+View(train.tokens.tfidf[1:25, 1:25])
+
+#check for incomplete cases as after preprocessing most would be empty strings.
+incomplete.cases = which(!complete.cases(train.tokens.tfidf))
+train$Text[incomplete.cases]
+
+#replacing incomplete cases by zeros as it wouldent affect the model
+train.tokens.tfidf[incomplete.cases,] = rep(0.0, ncol(train.tokens.tfidf))
+dim(train.tokens.tfidf)
+sum(which(!complete.cases(train.tokens.tfidf)))
+
+#making a new clean data frame for the IF IDF
+train.tokens.tfidf.df = cbind(Label = train$Label, data.frame(train.tokens.tfidf))
+names(train.tokens.tfidf.df) = make.names(train.tokens.tfidf.df)
+
+#calculating execution time
+start.time = Sys.time()
+
+#create clusers to work on diffrent cores
+cl = makeCluster(3, type = "SOCK")
+registerDoSNOW(cl)
+
+#As the data is non-trivial in size  use a single decision tree alogrithm
+rpart.cv.2 <- train(Label ~ ., data = train.tokens.tfidf.df, method = "rpart", 
+                    trControl = cv.cntrl, tuneLength = 7)
+# Processing is done
+stopCluster(cl)
+
+# Total time of execution
+total.time <- Sys.time() - start.time
+total.time
+
+#Check Results
+rpart.cv.2
