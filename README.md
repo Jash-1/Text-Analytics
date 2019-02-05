@@ -1,5 +1,5 @@
 # Natural Language Processing
-# Text-Analytics 
+# Text-Analytics Bag of words model
 Text analytics to find if message is Spam or Not Spam
 
 Decision tree analysis
